@@ -21,7 +21,7 @@ export function formatRelativeTime(date: string | Date) {
 }
 
 // Currency formatting
-export function formatCurrency(amount: number | string | null | undefined, currency = 'USD') {
+export function formatCurrency(amount: number | string | null | undefined, currency = 'PKR') {
   const value =
     typeof amount === 'string'
       ? parseFloat(amount)
@@ -30,6 +30,14 @@ export function formatCurrency(amount: number | string | null | undefined, curre
       : 0;
 
   const normalized = Number.isFinite(value) ? value : 0;
+  
+  // Custom display for common currencies
+  if (currency === 'PKR') {
+    return `₨ ${normalized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  } else if (currency === 'AED') {
+    return `AED ${normalized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,

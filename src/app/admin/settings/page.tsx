@@ -8,37 +8,34 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/auth';
-import { useAdminUser, useUpdateAdminUserMutation } from '@/hooks/useQueries';
+import { useAdminUser, useUpdateAdminUserMutation, usePlatformSettings, useUpdateSettingsMutation } from '@/hooks/useQueries';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
   const { data: adminUser, isLoading: isAdminLoading } = useAdminUser(user?.id);
+  const { data: settings, isLoading: isSettingsLoading } = usePlatformSettings();
   const updateAdminUserMutation = useUpdateAdminUserMutation();
+  const updateSettingsMutation = useUpdateSettingsMutation();
+  
   const [platformName, setPlatformName] = useState('Survey Platform');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('PKR');
   const [stripeKey, setStripeKey] = useState('');
   const [platformFee, setPlatformFee] = useState('10');
-  const [reportThreshold, setReportThreshold] = useState('2');
+  const [reportThreshold, setReportThreshold] = useState('25');
   const [suspensionThreshold, setSuspensionThreshold] = useState('3');
 
   useEffect(() => {
-    if (adminUser?.full_name) {
-      setPlatformName(adminUser.full_name);
+    if (settings) {
+      setPlatformName(settings.platform_name || 'Survey Platform');
+      setCurrency(settings.currency || 'PKR');
+      setStripeKey(settings.stripe_key || '');
+      setPlatformFee(String(settings.platform_fee || '10'));
+      setReportThreshold(String(settings.report_threshold || '25'));
+      setSuspensionThreshold(String(settings.suspension_threshold || '3'));
     }
-  }, [adminUser]);
-
-  useEffect(() => {
-    const savedSettings = typeof window !== 'undefined' ? localStorage.getItem('platform-settings') : null;
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      setCurrency(parsed.currency || 'USD');
-      setStripeKey(parsed.stripeKey || '');
-      setPlatformFee(parsed.platformFee || '10');
-      setReportThreshold(parsed.reportThreshold || '2');
-      setSuspensionThreshold(parsed.suspensionThreshold || '3');
-    }
-  }, []);
+  }, [settings]);
 
   const handleSaveProfile = () => {
     if (!user?.id) {
@@ -47,26 +44,37 @@ export default function SettingsPage() {
     }
 
     updateAdminUserMutation.mutate(
-      { userId: user.id, data: { full_name: platformName } },
+      { userId: user.id, data: { full_name: adminUser?.full_name || '' } }, // This part might be for admin profile name
       {
         onSuccess: () => {
-          toast.success('Admin name updated successfully.');
+          toast.success('Admin profile updated successfully.');
         },
         onError: (error) => {
-          toast.error(error instanceof Error ? error.message : 'Unable to update admin profile.');
+          toast.error(error instanceof Error ? error.message : 'Unable to update profile.');
         },
       }
     );
   };
 
   const handleSaveSettings = () => {
-    if (typeof window === 'undefined') return;
-
-    localStorage.setItem(
-      'platform-settings',
-      JSON.stringify({ currency, stripeKey, platformFee, reportThreshold, suspensionThreshold })
+    updateSettingsMutation.mutate(
+      {
+        platform_name: platformName,
+        currency,
+        stripe_key: stripeKey,
+        platform_fee: parseFloat(platformFee),
+        report_threshold: parseInt(reportThreshold),
+        suspension_threshold: parseInt(suspensionThreshold),
+      },
+      {
+        onSuccess: () => {
+          toast.success('Platform settings saved successfully.');
+        },
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : 'Unable to save settings.');
+        },
+      }
     );
-    toast.success('Platform settings saved locally.');
   };
 
   return (
@@ -100,18 +108,30 @@ export default function SettingsPage() {
                     id="name"
                     value={platformName}
                     onChange={(e) => setPlatformName(e.target.value)}
-                    disabled={isAdminLoading}
+                    disabled={isSettingsLoading}
+                    placeholder="Survey Platform"
                   />
                 </div>
                 <div>
                   <Label htmlFor="currency">Currency</Label>
-                  <Input
-                    id="currency"
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                  />
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger id="currency">
+                      <SelectValue placeholder="Select Currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PKR">PKR (₨)</SelectItem>
+                      <SelectItem value="USD">USD ($)</SelectItem>
+                      <SelectItem value="AED">AED (د.إ)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground mt-1">Select the base currency for the platform</p>
                 </div>
-                <Button onClick={handleSaveProfile}>Save Changes</Button>
+                <Button 
+                  onClick={handleSaveSettings}
+                  disabled={updateSettingsMutation.isPending}
+                >
+                  {updateSettingsMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -124,14 +144,15 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="report-threshold">Reports for Admin Notification</Label>
+                  <Label htmlFor="report-threshold">Reports for Admin Alert</Label>
                   <Input
                     id="report-threshold"
                     type="number"
                     value={reportThreshold}
                     onChange={(e) => setReportThreshold(e.target.value)}
+                    min="1"
                   />
-                  <p className="text-sm text-muted-foreground">Admin notified after this many reports</p>
+                  <p className="text-sm text-muted-foreground mt-1">Admin will be alerted after this many reports on a survey (default: 25)</p>
                 </div>
                 <div>
                   <Label htmlFor="suspension-threshold">Auto Suspension Threshold</Label>
@@ -140,10 +161,16 @@ export default function SettingsPage() {
                     type="number"
                     value={suspensionThreshold}
                     onChange={(e) => setSuspensionThreshold(e.target.value)}
+                    min="1"
                   />
-                  <p className="text-sm text-muted-foreground">User auto-suspended after this many reports</p>
+                  <p className="text-sm text-muted-foreground mt-1">Creator will be auto-suspended after this many downed surveys (default: 3)</p>
                 </div>
-                <Button onClick={handleSaveSettings}>Save Changes</Button>
+                <Button 
+                  onClick={handleSaveSettings}
+                  disabled={updateSettingsMutation.isPending}
+                >
+                  {updateSettingsMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -164,6 +191,7 @@ export default function SettingsPage() {
                     value={stripeKey}
                     onChange={(e) => setStripeKey(e.target.value)}
                   />
+                  <p className="text-sm text-muted-foreground mt-1">Your public Stripe key for payment processing</p>
                 </div>
                 <div>
                   <Label htmlFor="platform-fee">Platform Fee (%)</Label>
@@ -171,11 +199,19 @@ export default function SettingsPage() {
                     id="platform-fee"
                     type="number"
                     value={platformFee}
-                    step="0.1"
                     onChange={(e) => setPlatformFee(e.target.value)}
+                    step="0.1"
+                    min="0"
+                    max="100"
                   />
+                  <p className="text-sm text-muted-foreground mt-1">Percentage fee charged on survey rewards (default: 10%)</p>
                 </div>
-                <Button onClick={handleSaveSettings}>Save Changes</Button>
+                <Button 
+                  onClick={handleSaveSettings}
+                  disabled={updateSettingsMutation.isPending}
+                >
+                  {updateSettingsMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -188,18 +224,25 @@ export default function SettingsPage() {
                 <CardDescription>Manage admin access and permissions</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Button onClick={() => toast('Feature not available yet')}>Add Admin User</Button>
+                <Button 
+                  onClick={() => toast('Feature coming soon: Add additional admin users')}
+                  variant="outline"
+                >
+                  Add Admin User
+                </Button>
                 <div className="space-y-2">
-                  {adminUser ? (
+                  {isAdminLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading admin information...</div>
+                  ) : adminUser ? (
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">{adminUser.full_name}</p>
                         <p className="text-sm text-muted-foreground">{adminUser.email}</p>
                       </div>
-                      <p className="text-sm font-medium">{adminUser.role}</p>
+                      <p className="text-sm font-medium bg-blue-100 text-blue-800 px-3 py-1 rounded">{adminUser.role}</p>
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground">Loading admin information...</div>
+                    <div className="text-sm text-muted-foreground">No admin information available</div>
                   )}
                 </div>
               </CardContent>

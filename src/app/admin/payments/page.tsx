@@ -13,12 +13,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { usePayments } from '@/hooks/useQueries';
+import { usePayments, usePlatformSettings } from '@/hooks/useQueries';
 import { formatDate, formatCurrency } from '@/utils';
 import { Search } from 'lucide-react';
 
 export default function PaymentsPage() {
   const { data, isLoading } = usePayments({ page: 1, limit: 10 });
+  const { data: settings } = usePlatformSettings();
   const transactions = data?.transactions || [];
 
   return (
@@ -37,7 +38,7 @@ export default function PaymentsPage() {
               <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(data?.totalRevenue || 0)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(data?.totalRevenue || 0, settings?.currency)}</p>
               <p className="text-xs text-muted-foreground">{data?.transactions.length ?? 0} transactions</p>
             </CardContent>
           </Card>
@@ -47,7 +48,7 @@ export default function PaymentsPage() {
               <CardTitle className="text-sm font-medium">Pending Withdrawals</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(data?.pendingWithdrawals || 0)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(data?.pendingWithdrawals || 0, settings?.currency)}</p>
               <p className="text-xs text-muted-foreground">{data?.withdrawals?.filter((withdrawal) => withdrawal.status === 'pending').length ?? 0} pending requests</p>
             </CardContent>
           </Card>
@@ -57,8 +58,8 @@ export default function PaymentsPage() {
               <CardTitle className="text-sm font-medium">Platform Fees</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency((data?.totalRevenue || 0) * 0.1)}</p>
-              <p className="text-xs text-muted-foreground">10% of total completed revenue</p>
+              <p className="text-2xl font-bold">{formatCurrency((data?.totalRevenue || 0) * (settings?.platform_fee || 10) / 100, settings?.currency)}</p>
+              <p className="text-xs text-muted-foreground">{settings?.platform_fee || 10}% of total completed revenue</p>
             </CardContent>
           </Card>
         </div>
@@ -92,7 +93,7 @@ export default function PaymentsPage() {
                   {transactions.map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell>{(tx as any).users?.full_name || tx.user_id}</TableCell>
-                      <TableCell>{formatCurrency(tx.amount)}</TableCell>
+                      <TableCell>{formatCurrency(tx.amount, settings?.currency)}</TableCell>
                       <TableCell>
                         <Badge variant={tx.type === 'credit' ? 'default' : 'outline'}>
                           {tx.type}

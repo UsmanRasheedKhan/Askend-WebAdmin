@@ -17,81 +17,32 @@ export function useUsers(params?: PaginationParams & { role?: string }) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: async () => {
-      // Try `users` table first (older schema), otherwise fall back to `user_profiles`.
-      try {
-        let query = supabase.from('users').select('*', { count: 'exact' });
+      let query = supabase.from('user_profiles').select('*', { count: 'exact' });
 
-        if (params?.role && params.role !== 'all') {
-          query = query.eq('user_role', params.role);
-        }
-
-        if (params?.sort_by) {
-          query = query.order(params.sort_by, {
-            ascending: params.sort_order === 'asc',
-          });
-        }
-
-        if (params?.page && params?.limit) {
-          const start = (params.page - 1) * params.limit;
-          query = query.range(start, start + params.limit - 1);
-        }
-
-        const { data, error, count } = await query;
-        if (!error && data && data.length > 0) {
-          const limit = params?.limit || 10;
-          const total_pages = Math.ceil((count || 0) / limit);
-          return {
-            data: data as SurveyUser[],
-            total: count || 0,
-            total_pages,
-            page: params?.page || 1,
-            limit,
-          };
-        }
-      } catch (e) {
-        // ignore and fallback
-      }
-
-      // Fallback to user_profiles table (some deployments use this table)
-      let profQuery = supabase.from('user_profiles').select('*', { count: 'exact' });
       if (params?.role && params.role !== 'all') {
-        profQuery = profQuery.eq('user_role', params.role);
-      }
-      if (params?.sort_by) {
-        profQuery = profQuery.order(params.sort_by, {
-          ascending: params.sort_order === 'asc',
-        });
-      }
-      if (params?.page && params?.limit) {
-        const start = (params.page - 1) * params.limit;
-        profQuery = profQuery.range(start, start + params.limit - 1);
+        query = query.eq('user_role', params.role);
       }
 
-      const { data, error, count } = await profQuery;
-      if (error) throw error;
+      const page = params?.page || 1;
       const limit = params?.limit || 10;
-      const total_pages = Math.ceil((count || 0) / limit);
+      const start = (page - 1) * limit;
+      const end = start + limit - 1;
 
-      // Map user_profiles rows to the shape expected by the UI
-      const mapped = (data || []).map((row: any) => ({
-        id: row.user_id || row.id,
-        full_name: row.full_name || row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
-        email: row.email || row.primary_email || null,
-        user_role: row.user_role || row.role || 'filler',
-        wallet_balance: row.wallet_balance ?? row.balance ?? 0,
-        total_reports: row.total_reports ?? 0,
-        created_at: row.created_at || row.profile_created_at,
-        status: row.status || 'active',
-      })) as SurveyUser[];
+      const { data, error, count } = await query
+        .range(start, end)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
 
       return {
-        data: mapped,
-        total: count || mapped.length,
-        total_pages,
-        page: params?.page || 1,
+        data: data || [],
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limit),
+        page,
         limit,
       };
     },
+    refetchInterval: 30000,
   });
 }
 
@@ -100,9 +51,9 @@ export function useUserDetail(userId: string) {
     queryKey: ['user', userId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('users')
+        .from('user_profiles')
         .select('*')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .single();
 
       if (error) throw error;
@@ -117,67 +68,42 @@ export function useSurveys(params?: PaginationParams) {
   return useQuery({
     queryKey: ['surveys', params],
     queryFn: async () => {
-      let query = supabase.from('surveys').select('*', { count: 'exact' });
+      let query = supabase
+        .from('surveys')
+        .select(`
+          *,
+          user_profiles:user_id (full_name)
+        `, { count: 'exact' });
 
-      if (params?.sort_by) {
-        query = query.order(params.sort_by, {
-          ascending: params.sort_order === 'asc',
-        });
-      }
+      // Apply search if needed (though not implemented in params yet)
+      
+      const page = params?.page || 1;
+      const limit = params?.limit || 10;
+      const start = (page - 1) * limit;
+      const end = start + limit - 1;
 
-      if (params?.page && params?.limit) {
-        const start = (params.page - 1) * params.limit;
-        query = query.range(start, start + params.limit - 1);
-      }
-
-      const { data, error, count } = await query;
+      const { data, error, count } = await query
+        .range(start, end)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const surveys = (data || []) as any[];
-
-      // Attach creator info and response counts when possible
-      const userIds = Array.from(new Set(surveys.map((s) => s.user_id || s.creator_id).filter(Boolean)));
-      let creatorsMap: Record<string, any> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase.from('user_profiles').select('user_id,full_name').in('user_id', userIds);
-        if (profiles) {
-          profiles.forEach((p: any) => {
-            creatorsMap[p.user_id] = p;
-          });
-        }
-      }
-
-      // Fetch response counts for each survey (batch)
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        surveys.map(async (s) => {
-          try {
-            const res = await supabase.from('survey_responses').select('id', { count: 'exact', head: true }).eq('survey_id', s.id);
-            counts[s.id] = res.count || 0;
-          } catch (e) {
-            counts[s.id] = s.total_responses_collected ?? s.responses_collected ?? s.total_responses ?? 0;
-          }
-        })
-      );
-
-      const enriched = surveys.map((s) => ({
-        ...s,
-        creator_name: creatorsMap[s.user_id]?.full_name || creatorsMap[s.creator_id]?.full_name || s.creator_name || s.creator || null,
-        responses_count: counts[s.id] ?? s.total_responses_collected ?? s.responses_collected ?? s.total_responses ?? 0,
+      // Transform to include creator_name
+      const transformedData = data?.map(survey => ({
+        ...survey,
+        creator_name: (survey.user_profiles as any)?.full_name || 'Unknown Creator',
+        responses_count: (survey as any).responses_collected || (survey as any).total_responses_collected || 0
       }));
 
-      const limit = params?.limit || 10;
-      const total_pages = Math.ceil((count || 0) / limit);
-
       return {
-        data: enriched as Survey[],
-        total: count || enriched.length,
-        total_pages,
-        page: params?.page || 1,
+        data: transformedData || [],
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limit),
+        page,
         limit,
       };
     },
+    refetchInterval: 30000,
   });
 }
 
@@ -185,38 +111,35 @@ export function useSurveyDetail(surveyId: string) {
   return useQuery({
     queryKey: ['survey', surveyId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: survey, error } = await supabase
         .from('surveys')
-        .select('*')
+        .select(`
+          *,
+          user_profiles:user_id (full_name, email)
+        `)
         .eq('id', surveyId)
         .single();
 
       if (error) throw error;
-      const survey = data as any;
+      
+      const result = { ...survey } as any;
+      result.creator_name = (survey.user_profiles as any)?.full_name || 'Unknown Creator';
+      result.responses_count = (survey as any).responses_collected || (survey as any).total_responses_collected || 0;
 
-      // parse questions if stored as JSON string
+      // parse questions
       try {
-        if (typeof survey.questions === 'string') survey.questions = JSON.parse(survey.questions);
+        if (typeof result.questions === 'string') {
+          result.questions = JSON.parse(result.questions);
+        }
       } catch (e) {
-        // leave as-is
+        // Already an object or invalid
       }
 
-      // attach responses count
-      try {
-        const { count } = await supabase.from('survey_responses').select('id', { count: 'exact', head: true }).eq('survey_id', surveyId);
-        (survey as any).responses_count = count || 0;
-      } catch (e) {
-        (survey as any).responses_count = survey.total_responses_collected ?? 0;
+      if (!Array.isArray(result.questions)) {
+        result.questions = [];
       }
 
-      // attach creator name if possible
-      const creatorId = survey.user_id || survey.creator_id;
-      if (creatorId) {
-        const { data: profile } = await supabase.from('user_profiles').select('user_id,full_name').eq('user_id', creatorId).single();
-        if (profile) survey.creator_name = profile.full_name;
-      }
-
-      return survey as Survey;
+      return result as Survey;
     },
     enabled: !!surveyId,
   });
@@ -226,33 +149,24 @@ export function useSurveyResponses(surveyId?: string) {
   return useQuery({
     queryKey: ['survey-responses', surveyId],
     queryFn: async () => {
-      if (!surveyId) return [] as any[];
-      const { data, error } = await supabase.from('survey_responses').select('*').eq('survey_id', surveyId).order('created_at', { ascending: false });
+      if (!surveyId) return [];
+
+      const { data, error } = await supabase
+        .from('survey_responses')
+        .select(`
+          *,
+          user_profiles:user_id (full_name, email)
+        `)
+        .eq('survey_id', surveyId)
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
 
-      const responses = (data || []) as any[];
-
-      // Batch fetch responder names if user_id present
-      const userIds = Array.from(new Set(responses.map((r) => r.user_id).filter(Boolean)));
-      const respondersMap: Record<string, any> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase.from('user_profiles').select('user_id,full_name').in('user_id', userIds);
-        if (profiles) profiles.forEach((p: any) => (respondersMap[p.user_id] = p));
-      }
-
-      const mapped = responses.map((r) => ({
-        id: r.id,
-        user_id: r.user_id,
-        responder_name: respondersMap[r.user_id]?.full_name || r.responder_name || null,
-        created_at: r.created_at || r.createdAt || r.completed_at,
-        completed_at: r.completed_at || r.finished_at || null,
-        response_data: r.response_data || r.response || r.responseData || r.response_data_json || r.response_data,
-        status: r.status,
-        time_taken_seconds: r.time_taken_seconds,
-        raw: r,
-      }));
-
-      return mapped as any[];
+      return data?.map(resp => ({
+        ...resp,
+        responder_name: (resp.user_profiles as any)?.full_name || 'Anonymous',
+        responder_email: (resp.user_profiles as any)?.email || ''
+      })) || [];
     },
     enabled: !!surveyId,
   });
@@ -312,72 +226,42 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      const stats: DashboardStats = {
-        total_users: 0,
-        total_creators: 0,
-        total_fillers: 0,
-        active_surveys: 0,
-        draft_surveys: 0,
-        pending_reports: 0,
-        total_revenue: 0,
-        withdrawals_pending: 0,
-        blocked_users: 0,
-        todays_signups: 0,
-        todays_surveys: 0,
-        todays_responses: 0,
-      };
-
-      const today = new Date();
-      const todayStart = new Date(today);
-      todayStart.setHours(0, 0, 0, 0);
-      const todayIso = todayStart.toISOString();
-
       const [
         { count: totalUsers },
-        { count: totalCreators },
-        { count: totalFillers },
         { count: activeSurveys },
-        { count: draftSurveys },
         { count: pendingReports },
+        { data: transactions },
+        { count: creators },
+        { count: fillers },
         { count: blockedUsers },
-        { data: revenueData },
-        { count: pendingWithdrawalsCount },
+        { count: pendingWithdrawals }
       ] = await Promise.all([
-        supabase.from('users').select('id', { count: 'exact', head: true }),
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('user_role', 'creator'),
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('user_role', 'filler'),
-        supabase.from('surveys').select('id', { count: 'exact', head: true }).eq('status', 'published'),
-        supabase.from('surveys').select('id', { count: 'exact', head: true }).eq('status', 'draft'),
-        supabase.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('status', 'blocked'),
+        supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('surveys').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('transactions').select('amount').eq('status', 'completed'),
-        supabase.from('withdrawals').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('user_profiles').select('*', { count: 'exact', head: true }).eq('user_role', 'creator'),
+        supabase.from('user_profiles').select('*', { count: 'exact', head: true }).eq('user_role', 'filler'),
+        supabase.from('user_profiles').select('*', { count: 'exact', head: true }).neq('status', 'active'),
+        supabase.from('withdrawals').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
 
-      stats.total_users = totalUsers || 0;
-      stats.total_creators = totalCreators || 0;
-      stats.total_fillers = totalFillers || 0;
-      stats.active_surveys = activeSurveys || 0;
-      stats.draft_surveys = draftSurveys || 0;
-      stats.pending_reports = pendingReports || 0;
-      stats.blocked_users = blockedUsers || 0;
-      stats.total_revenue = (revenueData || []).reduce(
-        (sum, transaction) => sum + Number((transaction as Transaction).amount || 0),
-        0
-      );
-      stats.withdrawals_pending = Number(pendingWithdrawalsCount || 0);
+      const totalRevenue = transactions?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0;
 
-      const [{ count: todaysSignups }, { count: todaysSurveys }] = await Promise.all([
-        supabase.from('users').select('id', { count: 'exact', head: true }).gte('created_at', todayIso),
-        supabase.from('surveys').select('id', { count: 'exact', head: true }).gte('created_at', todayIso),
-      ]);
-
-      stats.todays_signups = Number(todaysSignups || 0);
-      stats.todays_surveys = Number(todaysSurveys || 0);
-
-      return stats;
+      return {
+        total_users: totalUsers || 0,
+        active_surveys: activeSurveys || 0,
+        pending_reports: pendingReports || 0,
+        total_revenue: totalRevenue,
+        total_creators: creators || 0,
+        total_fillers: fillers || 0,
+        blocked_users: blockedUsers || 0,
+        withdrawals_pending: pendingWithdrawals || 0,
+        todays_signups: 0, 
+        todays_surveys: 0,
+      } as any;
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
   });
 }
 
@@ -392,7 +276,7 @@ export function useDashboardAnalytics() {
       const startIso = startDate.toISOString();
 
       const [userRes, transactionRes] = await Promise.all([
-        supabase.from('users').select('created_at').gte('created_at', startIso),
+        supabase.from('user_profiles').select('created_at').gte('created_at', startIso),
         supabase
           .from('transactions')
           .select('amount, created_at')
@@ -445,7 +329,7 @@ export function usePayments(params?: PaginationParams) {
     queryFn: async () => {
       let transactionQuery = supabase
         .from('transactions')
-        .select('*, users(full_name)', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
       let withdrawalQuery = supabase.from('withdrawals').select('*', { count: 'exact' }).order('requested_at', { ascending: false });
 
@@ -531,9 +415,9 @@ export function useUpdateUserMutation() {
   return useMutation({
     mutationFn: async ({ userId, data }: { userId: string; data: Partial<SurveyUser> }) => {
       const { data: updated, error } = await supabase
-        .from('users')
+        .from('user_profiles')
         .update(data)
-        .eq('id', userId)
+        .eq('user_id', userId)
         .select()
         .single();
 
@@ -542,6 +426,7 @@ export function useUpdateUserMutation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
     },
   });
 }
@@ -616,3 +501,198 @@ export function useUpdateReportStatusMutation() {
     },
   });
 }
+
+// Report Notifications Hooks
+export function useReportNotifications(params?: PaginationParams) {
+  return useQuery({
+    queryKey: ['report-notifications', params],
+    queryFn: async () => {
+      let query = supabase.from('report_notifications').select('*', { count: 'exact' });
+
+      if (params?.sort_by) {
+        query = query.order(params.sort_by, {
+          ascending: params.sort_order === 'asc',
+        });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+
+      if (params?.page && params?.limit) {
+        const start = (params.page - 1) * params.limit;
+        query = query.range(start, start + params.limit - 1);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      const limit = params?.limit || 10;
+      const total_pages = Math.ceil((count || 0) / limit);
+
+      return {
+        data: data as any[],
+        total: count || 0,
+        total_pages,
+        page: params?.page || 1,
+        limit,
+      };
+    },
+    refetchInterval: 30000,
+  });
+}
+
+export function useSurveyQuestions(surveyId?: string) {
+  return useQuery({
+    queryKey: ['survey-questions', surveyId],
+    queryFn: async () => {
+      if (!surveyId) return [];
+      const { data, error } = await supabase
+        .from('surveys')
+        .select('questions')
+        .eq('id', surveyId)
+        .single();
+      
+      if (error) throw error;
+      
+      let questions = data?.questions || [];
+      
+      // Parse if string
+      if (typeof questions === 'string') {
+        try {
+          questions = JSON.parse(questions);
+        } catch (e) {
+          questions = [];
+        }
+      }
+
+      // Ensure it's an array
+      if (!Array.isArray(questions)) {
+        questions = [];
+      }
+
+      // Normalize field names (text vs question_text, type vs question_type)
+      return questions.map((q: any) => ({
+        id: q.id || Math.random().toString(36).substr(2, 9),
+        question_text: q.question_text || q.text || q.title || '',
+        question_type: q.question_type || q.type || 'text',
+        options: q.options || q.choices || [],
+        required: q.required ?? true
+      })) as any[];
+    },
+    enabled: !!surveyId,
+  });
+}
+
+// Report Notification Mutations
+export function useCreateReportNotificationMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      survey_id: string;
+      reporter_id: string;
+      creator_id: string;
+      reason: string;
+      description?: string;
+    }) => {
+      const { data: created, error } = await supabase
+        .from('report_notifications')
+        .insert([data])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return created;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    },
+  });
+}
+
+export function useUpdateReportNotificationMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      reportId,
+      data,
+    }: {
+      reportId: string;
+      data: Partial<any>;
+    }) => {
+      const { data: updated, error } = await supabase
+        .from('report_notifications')
+        .update(data)
+        .eq('id', reportId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report-notifications'] });
+    },
+  });
+}
+
+// Platform Settings Hook
+export function usePlatformSettings() {
+  return useQuery({
+    queryKey: ['platform-settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('platform_settings')
+        .select('*')
+        .eq('id', 'global')
+        .single();
+      
+      if (error) {
+        return {
+          platform_name: 'Survey Platform',
+          currency: 'PKR',
+          report_threshold: 25,
+          suspension_threshold: 3,
+          platform_fee: 10,
+          stripe_key: '',
+        };
+      }
+      return data;
+    },
+    refetchInterval: 60000,
+  });
+}
+
+// Platform Settings Mutation
+export function useUpdateSettingsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: any) => {
+      // Clean data to match schema
+      const payload = {
+        id: 'global',
+        platform_name: data.platform_name,
+        currency: data.currency,
+        report_threshold: data.report_threshold,
+        suspension_threshold: data.suspension_threshold,
+        platform_fee: data.platform_fee,
+        stripe_key: data.stripe_key
+      };
+
+      const { data: updated, error } = await supabase
+        .from('platform_settings')
+        .upsert(payload, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
+    },
+  });
+}
+

@@ -2,7 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { useDashboardAnalytics, useDashboardStats } from '@/hooks/useQueries';
+import { useDashboardAnalytics, useDashboardStats, usePlatformSettings } from '@/hooks/useQueries';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, FileText, AlertCircle, TrendingUp, CreditCard, LogOut } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -11,6 +11,7 @@ import { formatCurrency, formatNumber } from '@/utils';
 export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: analyticsData, isLoading: analyticsLoading } = useDashboardAnalytics();
+  const { data: settings } = usePlatformSettings();
 
   const userGrowthData = analyticsData?.userGrowthData ?? [];
   const revenueData = analyticsData?.revenueData ?? [];
@@ -61,7 +62,7 @@ export default function DashboardPage() {
           />
           <StatCard
             title="Total Revenue"
-            value={formatCurrency(stats?.total_revenue || 0)}
+            value={formatCurrency(stats?.total_revenue || 0, settings?.currency)}
             icon={<TrendingUp className="h-4 w-4" />}
             trend={8}
             href="/admin/payments"

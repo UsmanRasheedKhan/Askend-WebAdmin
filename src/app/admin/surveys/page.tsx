@@ -28,7 +28,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
-import { useSurveys, useDeleteSurveyMutation, useDownSurveyMutation, useRestoreSurveyMutation } from '@/hooks/useQueries';
+import { useSurveys, useDeleteSurveyMutation, useDownSurveyMutation, useRestoreSurveyMutation, usePlatformSettings } from '@/hooks/useQueries';
 import { useRouter } from 'next/navigation';
 import { getSurveyReward } from '@/utils';
 import { formatDate, formatCurrency, truncate } from '@/utils';
@@ -40,6 +40,7 @@ export default function SurveysPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const { data, isLoading } = useSurveys({ page, limit: PAGINATION_LIMITS.DEFAULT });
+  const { data: settings } = usePlatformSettings();
   const downSurveyMutation = useDownSurveyMutation();
   const restoreSurveyMutation = useRestoreSurveyMutation();
   const deleteSurveyMutation = useDeleteSurveyMutation();
@@ -118,12 +119,16 @@ export default function SurveysPage() {
                           {truncate(survey.title, 40)}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {((survey as any).creator_name) ? (
-                            <a href={`/admin/users/${(survey as any).user_id || (survey as any).creator_id}`} className="underline">
-                              {truncate((survey as any).creator_name, 30)}
+                          {survey.creator_name && (survey as any).user_id ? (
+                            <a 
+                              href={`/admin/users/${(survey as any).user_id || (survey as any).creator_id}`} 
+                              className="text-blue-600 hover:text-blue-800 underline"
+                              title={survey.creator_name}
+                            >
+                              {truncate(survey.creator_name, 30)}
                             </a>
                           ) : (
-                            'Creator'
+                            truncate(survey.creator_name || 'Unknown', 30)
                           )}
                         </TableCell>
                         <TableCell>
@@ -132,9 +137,9 @@ export default function SurveysPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {(survey as any).responses_count ?? survey.total_responses_collected ?? 0} / {survey.target_responses}
+                          {(survey as any).responses_count ?? 0} / {survey.target_responses}
                         </TableCell>
-                        <TableCell>{formatCurrency(getSurveyReward(survey))}</TableCell>
+                        <TableCell>{formatCurrency(getSurveyReward(survey), settings?.currency)}</TableCell>
                         <TableCell className="text-sm">
                           {survey.published_at ? formatDate(survey.published_at) : '-'}
                         </TableCell>

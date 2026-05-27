@@ -28,7 +28,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
-import { useUsers, useUpdateUserMutation } from '@/hooks/useQueries';
+import { useUsers, useUpdateUserMutation, usePlatformSettings } from '@/hooks/useQueries';
 import { SurveyUser } from '@/types';
 import { formatDate, formatCurrency } from '@/utils';
 import { MoreVertical, Search } from 'lucide-react';
@@ -40,6 +40,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'creator' | 'filler'>('all');
   const { data, isLoading } = useUsers({ page, limit: PAGINATION_LIMITS.DEFAULT, role: roleFilter === 'all' ? undefined : roleFilter });
+  const { data: settings } = usePlatformSettings();
   const updateUserMutation = useUpdateUserMutation();
 
   const statusColors: Record<string, string> = {
@@ -146,7 +147,7 @@ export default function UsersPage() {
                             {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
                           </Badge>
                         </TableCell>
-                        <TableCell>{formatCurrency(user.wallet_balance)}</TableCell>
+                        <TableCell>{formatCurrency(user.wallet_balance, settings?.currency)}</TableCell>
                         <TableCell className="text-sm">{formatDate(user.created_at)}</TableCell>
                         {roleFilter === 'creator' && (
                           <TableCell className="text-center">{user.total_reports}</TableCell>

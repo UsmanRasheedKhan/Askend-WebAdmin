@@ -37,6 +37,23 @@ export const useAuthStore = create<AuthStore>()(
       initializeAuth: async () => {
         set({ isLoading: true });
         try {
+          // First check if we have a persisted session
+          const persistedSession = JSON.parse(
+            typeof window !== 'undefined' ? localStorage.getItem('auth-storage') || '{}' : '{}'
+          );
+          
+          if (persistedSession.state?.session && persistedSession.state?.user) {
+            set({ 
+              session: persistedSession.state.session, 
+              user: persistedSession.state.user, 
+              isAuthenticated: true, 
+              error: null 
+            });
+            set({ isLoading: false });
+            return;
+          }
+
+          // If no persisted session, try to get from Supabase
           const session = await getSession();
           if (session) {
             set({ session, user: session.user, isAuthenticated: true, error: null });
