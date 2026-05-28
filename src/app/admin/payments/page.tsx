@@ -48,8 +48,8 @@ export default function PaymentsPage() {
               <CardTitle className="text-sm font-medium">Pending Withdrawals</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(data?.pendingWithdrawals || 0, settings?.currency)}</p>
-              <p className="text-xs text-muted-foreground">{data?.withdrawals?.filter((withdrawal) => withdrawal.status === 'pending').length ?? 0} pending requests</p>
+              <p className="text-2xl font-bold">{formatCurrency(data?.pendingWithdrawalsAmount || 0, settings?.currency)}</p>
+              <p className="text-xs text-muted-foreground">{data?.pendingWithdrawalsCount ?? 0} pending requests</p>
             </CardContent>
           </Card>
 
@@ -92,7 +92,7 @@ export default function PaymentsPage() {
                 <TableBody>
                   {transactions.map((tx) => (
                     <TableRow key={tx.id}>
-                      <TableCell>{(tx as any).users?.full_name || tx.user_id}</TableCell>
+                      <TableCell>{(tx as any).creator_name || tx.user_id}</TableCell>
                       <TableCell>{formatCurrency(tx.amount, settings?.currency)}</TableCell>
                       <TableCell>
                         <Badge variant={tx.type === 'credit' ? 'default' : 'outline'}>

@@ -39,7 +39,11 @@ import { toast } from 'sonner';
 export default function SurveysPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const { data, isLoading } = useSurveys({ page, limit: PAGINATION_LIMITS.DEFAULT });
+  const { data, isLoading } = useSurveys({ 
+    page, 
+    limit: PAGINATION_LIMITS.DEFAULT,
+    search: search || undefined
+  });
   const { data: settings } = usePlatformSettings();
   const downSurveyMutation = useDownSurveyMutation();
   const restoreSurveyMutation = useRestoreSurveyMutation();
@@ -119,9 +123,9 @@ export default function SurveysPage() {
                           {truncate(survey.title, 40)}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {survey.creator_name && (survey as any).user_id ? (
-                            <a 
-                              href={`/admin/users/${(survey as any).user_id || (survey as any).creator_id}`} 
+                          {survey.creator_name && ((survey as any).user_id || (survey as any).creator_id) ? (
+                            <a
+                              href={`/admin/users?search=${encodeURIComponent(String((survey as any).user_id || (survey as any).creator_id || ''))}`}
                               className="text-blue-600 hover:text-blue-800 underline"
                               title={survey.creator_name}
                             >

@@ -15,7 +15,7 @@ export default function SurveyAnalyticsPage() {
   const params = useParams() as { id?: string }
   const router = useRouter()
   const surveyId = params.id
-  const { data: survey, isLoading: surveyLoading } = useSurveyDetail(surveyId || '')
+  const { data: survey, isLoading: surveyLoading, error: surveyError } = useSurveyDetail(surveyId || '')
   const { data: responses, isLoading: responsesLoading } = useSurveyResponses(surveyId)
   const { data: questions } = useSurveyQuestions(surveyId)
 
@@ -27,6 +27,23 @@ export default function SurveyAnalyticsPage() {
             <div className="h-8 w-8 rounded-full border-4 border-muted border-t-orange-500" />
           </div>
         </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (surveyError) {
+    return (
+      <DashboardLayout>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <p className="text-red-800">
+                {surveyError instanceof Error ? surveyError.message : 'Unable to load survey.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </DashboardLayout>
     )
   }
@@ -47,8 +64,8 @@ export default function SurveyAnalyticsPage() {
   }
 
   const totalResponses = responses?.length || 0
-  const targetResponses = survey.target_responses || 1
-  const completionRate = Math.round((totalResponses / targetResponses) * 100)
+  const targetResponses = Number(survey.target_responses) || 0
+  const completionRate = targetResponses > 0 ? Math.round((totalResponses / targetResponses) * 100) : 0
   const avgTimeSeconds = responses && responses.length > 0
     ? responses.reduce((sum, r) => sum + (r.time_taken_seconds || 0), 0) / responses.length
     : 0
@@ -72,7 +89,7 @@ export default function SurveyAnalyticsPage() {
   // Response distribution
   const responseDistribution = [
     { name: 'Completed', value: totalResponses, fill: '#10b981' },
-    { name: 'Remaining', value: Math.max(0, (survey.target_responses || 0) - totalResponses), fill: '#e5e7eb' },
+    { name: 'Remaining', value: Math.max(0, targetResponses - totalResponses), fill: '#e5e7eb' },
   ]
 
   return (

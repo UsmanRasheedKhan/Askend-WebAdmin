@@ -25,10 +25,10 @@ export async function GET(request: NextRequest) {
     const mapped = (data || []).map((row: any) => ({
       id: row.user_id,
       full_name: row.full_name,
-      email: row.email || 'N/A',
+      email: row.profession || 'N/A',
       user_role: row.user_role || 'filler',
       wallet_balance: row.wallet_balance ?? 0,
-      created_at: row.created_at,
+      created_at: row.created_at || new Date().toISOString(),
       status: 'active',
     }));
 

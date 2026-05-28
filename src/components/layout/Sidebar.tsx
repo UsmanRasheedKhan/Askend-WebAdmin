@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth';
+import { usePlatformSettings } from '@/hooks/useQueries';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,15 +41,24 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
+  const { data: settings } = usePlatformSettings();
+  const platformName = settings?.platform_name || 'Survey Admin';
+  const platformInitials = platformName
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <div className="flex h-full flex-col gap-4 border-r bg-background px-4 py-6">
       {/* Logo */}
       <div className="flex items-center gap-2 px-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500">
-          <span className="text-sm font-bold text-white">SA</span>
+          <span className="text-sm font-bold text-white">{platformInitials || 'SA'}</span>
         </div>
-        <h1 className="text-lg font-bold text-foreground">Survey Admin</h1>
+        <h1 className="text-lg font-bold text-foreground">{platformName}</h1>
       </div>
 
       {/* Navigation */}

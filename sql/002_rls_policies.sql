@@ -98,3 +98,28 @@ CREATE POLICY IF NOT EXISTS "Admins can create action logs" ON admin_action_logs
   WITH CHECK (
     auth.uid() IN (SELECT id FROM admin_users WHERE role IN ('super_admin', 'admin', 'moderator'))
   );
+
+-- Admin access for core tables (only applies if RLS is enabled on these tables)
+CREATE POLICY IF NOT EXISTS "Admins can view all user profiles" ON user_profiles
+  FOR SELECT
+  USING (
+    auth.uid() IN (SELECT id FROM admin_users WHERE role IN ('super_admin', 'admin', 'moderator'))
+  );
+
+CREATE POLICY IF NOT EXISTS "Admins can update user profiles" ON user_profiles
+  FOR UPDATE
+  USING (
+    auth.uid() IN (SELECT id FROM admin_users WHERE role IN ('super_admin', 'admin'))
+  );
+
+CREATE POLICY IF NOT EXISTS "Admins can view all surveys" ON surveys
+  FOR SELECT
+  USING (
+    auth.uid() IN (SELECT id FROM admin_users WHERE role IN ('super_admin', 'admin', 'moderator'))
+  );
+
+CREATE POLICY IF NOT EXISTS "Admins can view all survey responses" ON survey_responses
+  FOR SELECT
+  USING (
+    auth.uid() IN (SELECT id FROM admin_users WHERE role IN ('super_admin', 'admin', 'moderator'))
+  );

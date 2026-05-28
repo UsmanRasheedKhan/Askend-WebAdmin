@@ -15,7 +15,7 @@ export default function SurveyDetailPage() {
   const params = useParams() as { id?: string }
   const router = useRouter()
   const surveyId = params.id
-  const { data: survey, isLoading } = useSurveyDetail(surveyId || '')
+  const { data: survey, isLoading, error } = useSurveyDetail(surveyId || '')
   const { data: questions } = useSurveyQuestions(surveyId)
   const { data: settings } = usePlatformSettings()
   const downMutation = useDownSurveyMutation()
@@ -30,6 +30,23 @@ export default function SurveyDetailPage() {
             <div className="h-8 w-8 rounded-full border-4 border-muted border-t-orange-500" />
           </div>
         </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <p className="text-red-800">
+                {error instanceof Error ? error.message : 'Unable to load survey.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </DashboardLayout>
     )
   }
@@ -55,7 +72,9 @@ export default function SurveyDetailPage() {
     downed: 'bg-red-100 text-red-800',
   }
 
-  const responsesCount = (survey as any).responses_count ?? 0
+  const responsesCount = Number((survey as any).responses_count) || 0
+  const targetResponsesNum = Number((survey as any).target_responses) || 0
+  const questionList = questions && questions.length > 0 ? questions : (survey as any).questions || []
 
   return (
     <DashboardLayout>
@@ -89,7 +108,7 @@ export default function SurveyDetailPage() {
                 <div
                   className="h-full bg-green-500 transition-all"
                   style={{
-                    width: `${Math.round((responsesCount / survey.target_responses) * 100)}%`,
+                    width: `${targetResponsesNum > 0 ? Math.round((responsesCount / targetResponsesNum) * 100) : 0}%`,
                   }}
                 />
               </div>
@@ -129,7 +148,7 @@ export default function SurveyDetailPage() {
         <Tabs defaultValue="details" className="w-full">
           <TabsList>
             <TabsTrigger value="details">Survey Details</TabsTrigger>
-            <TabsTrigger value="questions">Questions ({questions?.length || 0})</TabsTrigger>
+            <TabsTrigger value="questions">Questions ({questionList.length || 0})</TabsTrigger>
             <TabsTrigger value="actions">Actions</TabsTrigger>
           </TabsList>
 
@@ -175,14 +194,17 @@ export default function SurveyDetailPage() {
                       variant="link"
                       size="sm"
                       className="p-0 mt-1"
-                      onClick={() => router.push(`/admin/users/${survey.creator_id || (survey as any).user_id}`)}
+                      onClick={() => {
+                        const creatorId = survey.creator_id || (survey as any).user_id;
+                        router.push(`/admin/users?search=${encodeURIComponent(String(creatorId || ''))}`);
+                      }}
                     >
                       View Creator Profile →
                     </Button>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Target Responses</p>
-                    <p className="text-base font-medium mt-1">{survey.target_responses}</p>
+                    <p className="text-base font-medium mt-1">{targetResponsesNum}</p>
                   </div>
                 </div>
               </CardContent>
@@ -191,14 +213,14 @@ export default function SurveyDetailPage() {
 
           {/* Questions Tab */}
           <TabsContent value="questions" className="space-y-4">
-            {!questions || questions.length === 0 ? (
+            {questionList.length === 0 ? (
               <Card className="border-gray-200 bg-gray-50">
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No questions found for this survey.</p>
                 </CardContent>
               </Card>
             ) : (
-              questions.map((question, index) => (
+              questionList.map((question, index) => (
                 <Card key={question.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between">

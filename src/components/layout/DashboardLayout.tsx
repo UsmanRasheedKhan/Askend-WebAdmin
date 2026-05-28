@@ -5,6 +5,7 @@ import { useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
+import { useAdminRealtime, usePlatformSettings } from '@/hooks/useQueries';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -13,10 +14,19 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { isAuthenticated, initializeAuth, isLoading } = useAuthStore();
   const router = useRouter();
+  const { data: settings } = usePlatformSettings();
+
+  useAdminRealtime(!isLoading && isAuthenticated);
 
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  useEffect(() => {
+    if (settings?.platform_name) {
+      document.title = `${settings.platform_name} Admin`;
+    }
+  }, [settings?.platform_name]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {

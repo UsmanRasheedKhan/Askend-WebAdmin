@@ -8,9 +8,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Date formatting utilities
-export function formatDate(date: string | Date) {
-  return format(new Date(date), 'MMM dd, yyyy');
-}
+// export function formatDate(date: string | Date) {
+//   return format(new Date(date), 'MMM dd, yyyy');
+// }
+
+// src/utils/index.ts
+
+export const formatDate = (date: any) => {
+  if (!date) return 'N/A'; // Handle null/undefined
+  
+  const d = new Date(date);
+  
+  // Check if the date object is valid
+  if (isNaN(d.getTime())) {
+    return 'Invalid Date';
+  }
+
+  // Your existing formatting logic here, e.g.:
+  // return format(d, 'MMM dd, yyyy'); 
+  return d.toLocaleDateString(); 
+};
 
 export function formatDateTime(date: string | Date) {
   return format(new Date(date), 'MMM dd, yyyy HH:mm');
@@ -33,9 +50,11 @@ export function formatCurrency(amount: number | string | null | undefined, curre
   
   // Custom display for common currencies
   if (currency === 'PKR') {
-    return `₨ ${normalized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₨ ${normalized.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   } else if (currency === 'AED') {
-    return `AED ${normalized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `AED ${normalized.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  } else if (currency === 'USD') {
+    return `$${normalized.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   }
 
   return new Intl.NumberFormat('en-US', {

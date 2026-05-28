@@ -38,11 +38,18 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true });
         try {
           // First check if we have a persisted session
-          const persistedSession = JSON.parse(
-            typeof window !== 'undefined' ? localStorage.getItem('auth-storage') || '{}' : '{}'
-          );
-          
-          if (persistedSession.state?.session && persistedSession.state?.user) {
+          let persistedSession: any = {};
+          try {
+            if (typeof window !== 'undefined') {
+              const raw = localStorage.getItem('auth-storage') || '{}';
+              persistedSession = JSON.parse(raw || '{}');
+            }
+          } catch (err) {
+            // ignore parse errors and continue to supabase fetch
+            persistedSession = {};
+          }
+
+          if (persistedSession?.state?.session && persistedSession?.state?.user) {
             set({ 
               session: persistedSession.state.session, 
               user: persistedSession.state.user, 

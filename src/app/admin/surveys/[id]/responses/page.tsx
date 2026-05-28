@@ -12,18 +12,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useSurveyDetail, useSurveyResponses } from '@/hooks/useQueries'
+import { useSurveyDetail, useSurveyResponses, useSurveyQuestions } from '@/hooks/useQueries'
 import { formatDate } from '@/utils'
 import { AlertCircle, Download, Filter } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog'
 
 export default function SurveyResponsesPage() {
   const params = useParams() as { id?: string }
   const router = useRouter()
   const surveyId = params.id
-  const { data: survey, isLoading: surveyLoading } = useSurveyDetail(surveyId || '')
+  const { data: survey, isLoading: surveyLoading, error: surveyError } = useSurveyDetail(surveyId || '')
   const { data: responses, isLoading: responsesLoading } = useSurveyResponses(surveyId)
+  const { data: questions = [] } = useSurveyQuestions(surveyId)
   const [searchTerm, setSearchTerm] = useState('')
 
   const filteredResponses = responses?.filter((resp) =>
@@ -31,9 +33,57 @@ export default function SurveyResponsesPage() {
     (resp.user_id || '').toLowerCase().includes(searchTerm.toLowerCase())
   ) || []
 
-  const targetResponses = survey.target_responses || 1 // Avoid division by zero
+  const targetResponses = Number(survey?.target_responses) || 0
   const totalCollected = responses?.length || 0
-  const completionRate = Math.round((totalCollected / targetResponses) * 100)
+  const completionRate = targetResponses > 0 ? Math.round((totalCollected / targetResponses) * 100) : 0
+
+  const [openResponse, setOpenResponse] = useState(false)
+  const [selectedResponse, setSelectedResponse] = useState<any>(null)
+
+  const questionMap = useMemo(() => {
+    const map = new Map<string, string>();
+    questions.forEach((question: any, index: number) => {
+      const idKey = question?.id ? String(question.id) : '';
+      const text = question?.question_text || `Question ${index + 1}`;
+      if (idKey) map.set(idKey, text);
+      if (question?.question_text) map.set(String(question.question_text), question.question_text);
+    });
+    return map;
+  }, [questions]);
+
+  const selectedResponseEntries = useMemo(() => {
+    if (!selectedResponse) return [] as Array<[string, any]>;
+    let data = selectedResponse.response_data;
+
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        return [['Response', data]];
+      }
+    }
+
+    if (Array.isArray(data)) {
+      return data.map((value, index) => [String(index + 1), value]);
+    }
+
+    if (data && typeof data === 'object') {
+      return Object.entries(data);
+    }
+
+    return [['Response', data]];
+  }, [selectedResponse]);
+
+  const formatAnswerValue = (value: any) => {
+    if (value === null || value === undefined) return 'N/A';
+    if (Array.isArray(value)) return value.join(', ');
+    if (typeof value === 'object') {
+      if ('answer' in value) return String((value as any).answer ?? '');
+      if ('value' in value) return String((value as any).value ?? '');
+      return JSON.stringify(value);
+    }
+    return String(value);
+  };
 
   if (surveyLoading) {
     return (
@@ -43,6 +93,23 @@ export default function SurveyResponsesPage() {
             <div className="h-8 w-8 rounded-full border-4 border-muted border-t-orange-500" />
           </div>
         </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (surveyError) {
+    return (
+      <DashboardLayout>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <p className="text-red-800">
+                {surveyError instanceof Error ? surveyError.message : 'Unable to load survey.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </DashboardLayout>
     )
   }
@@ -80,7 +147,7 @@ export default function SurveyResponsesPage() {
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">Total Responses</div>
               <div className="text-3xl font-bold mt-2">{responses?.length || 0}</div>
-              <div className="text-xs text-muted-foreground mt-2">out of {survey.target_responses}</div>
+              <div className="text-xs text-muted-foreground mt-2">out of {Number(survey?.target_responses) || 0}</div>
             </CardContent>
           </Card>
 
@@ -100,7 +167,7 @@ export default function SurveyResponsesPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">Remaining</div>
-              <div className="text-3xl font-bold mt-2">{Math.max(0, survey.target_responses - (responses?.length || 0))}</div>
+              <div className="text-3xl font-bold mt-2">{Math.max(0, (Number(survey?.target_responses) || 0) - (responses?.length || 0))}</div>
               <div className="text-xs text-muted-foreground mt-2">responses needed</div>
             </CardContent>
           </Card>
@@ -111,8 +178,8 @@ export default function SurveyResponsesPage() {
               <div className="text-2xl font-bold mt-2">
                 {responses && responses.length > 0
                   ? Math.round(
-                      responses.reduce((sum, r) => sum + (r.time_taken_seconds || 0), 0) / responses.length / 60
-                    )
+                      responses.reduce((sum, r) => sum + (Number(r.time_taken_seconds) || 0), 0) / responses.length / 60
+                    ) || 0
                   : 0}
               </div>
               <div className="text-xs text-muted-foreground mt-2">minutes per response</div>
@@ -197,7 +264,7 @@ export default function SurveyResponsesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => alert('Response details: ' + JSON.stringify(response.response_data, null, 2))}
+                            onClick={() => { setSelectedResponse(response); setOpenResponse(true); }}
                           >
                             View Details
                           </Button>
@@ -211,6 +278,50 @@ export default function SurveyResponsesPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Response Details Dialog */}
+      <Dialog open={openResponse} onOpenChange={setOpenResponse}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Response Details</DialogTitle>
+            <DialogDescription>
+              Detailed view of the selected response
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            {selectedResponse ? (
+              <div className="text-sm">
+                <div className="font-medium">Responder</div>
+                <div className="text-muted-foreground mb-2">{selectedResponse.responder_name || 'Anonymous'}</div>
+
+                <div className="font-medium">Submitted At</div>
+                <div className="text-muted-foreground mb-2">{selectedResponse.completed_at ? formatDate(selectedResponse.completed_at) : formatDate(selectedResponse.created_at)}</div>
+
+                <div className="font-medium">Answers</div>
+                <div className="mt-2 space-y-2">
+                  {selectedResponseEntries.length > 0 ? (
+                    selectedResponseEntries.map(([key, value], index) => {
+                      const label = questionMap.get(String(key)) || questionMap.get(String(key).trim()) || String(key || `Answer ${index + 1}`);
+                      return (
+                        <div key={`${key}-${index}`} className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">{label}</div>
+                          <div className="text-sm font-medium">{formatAnswerValue(value)}</div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No response data available.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div>No response selected.</div>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

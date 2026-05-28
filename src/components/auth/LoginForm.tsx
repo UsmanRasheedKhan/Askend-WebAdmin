@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmail } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/store/auth';
+import { usePlatformSettings } from '@/hooks/useQueries';
 import { toast } from 'sonner';
 
 export function LoginForm() {
@@ -16,6 +17,17 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setFormError] = useState('');
+  const { data: settings } = usePlatformSettings();
+  const platformName = settings?.platform_name || 'Survey Admin';
+  const platformInitials = useMemo(() => {
+    return platformName
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  }, [platformName]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -53,9 +65,9 @@ export function LoginForm() {
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2 mb-4">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500">
-              <span className="text-sm font-bold text-white">SA</span>
+              <span className="text-sm font-bold text-white">{platformInitials || 'SA'}</span>
             </div>
-            <h1 className="text-xl font-bold">Survey Admin</h1>
+            <h1 className="text-xl font-bold">{platformName}</h1>
           </div>
 
           <CardTitle>Admin Login</CardTitle>

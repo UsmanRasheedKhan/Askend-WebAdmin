@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useReports, useUpdateReportStatusMutation } from '@/hooks/useQueries';
+import { usePlatformSettings, useReports, useUpdateReportStatusMutation } from '@/hooks/useQueries';
 import { formatDate } from '@/utils';
 import { MoreVertical, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,7 +31,11 @@ export default function ReportsPage() {
   const [page, setPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const { data, isLoading } = useReports({ page, limit: PAGINATION_LIMITS.DEFAULT });
+  const { data: settings } = usePlatformSettings();
   const updateReportStatusMutation = useUpdateReportStatusMutation();
+
+  const reportThreshold = settings?.report_threshold ?? 25;
+  const suspensionThreshold = settings?.suspension_threshold ?? 3;
 
   const statusColors: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20',
@@ -53,6 +57,15 @@ export default function ReportsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Report Management</h1>
           <p className="text-muted-foreground">Review and manage user reports and moderation.</p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Moderation Rules</CardTitle>
+            <CardDescription>
+              Alerts trigger after {reportThreshold} reports. Auto-suspension triggers after {suspensionThreshold} downed surveys.
+            </CardDescription>
+          </CardHeader>
+        </Card>
 
         {/* Filters */}
         <Card>

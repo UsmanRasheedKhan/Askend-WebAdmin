@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,14 +34,80 @@ import { formatDate, formatCurrency } from '@/utils';
 import { MoreVertical, Search } from 'lucide-react';
 import { PAGINATION_LIMITS } from '@/constants';
 import { toast } from 'sonner';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+type UserRow = SurveyUser & { user_id?: string; total_reports?: number };
 
 export default function UsersPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'creator' | 'filler'>('all');
-  const { data, isLoading } = useUsers({ page, limit: PAGINATION_LIMITS.DEFAULT, role: roleFilter === 'all' ? undefined : roleFilter });
+  const [searchInput, setSearchInput] = useState('');
+  const [roleInput, setRoleInput] = useState<'all' | 'creator' | 'filler'>('all');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [appliedRole, setAppliedRole] = useState<'all' | 'creator' | 'filler'>('all');
+
+  useEffect(() => {
+    const paramSearch = searchParams.get('search') || '';
+    const paramRole = searchParams.get('role') || 'all';
+
+    setSearchInput(paramSearch);
+    setAppliedSearch(paramSearch);
+
+    if (paramRole === 'creator' || paramRole === 'filler' || paramRole === 'all') {
+      setRoleInput(paramRole);
+      setAppliedRole(paramRole);
+    }
+
+    setPage(1);
+  }, [searchParams]);
+
+  const isFiltering = appliedSearch.trim().length > 0 || appliedRole !== 'all';
+  const limit = isFiltering ? PAGINATION_LIMITS.LARGE : PAGINATION_LIMITS.DEFAULT;
+
+  const { data, isLoading, error } = useUsers({ 
+    page, 
+    limit, 
+    role: appliedRole === 'all' ? undefined : appliedRole,
+    search: appliedSearch || undefined
+  });
   const { data: settings } = usePlatformSettings();
   const updateUserMutation = useUpdateUserMutation();
+  const filteredUsers = useMemo(() => {
+    const list = (data?.data || []) as UserRow[];
+    const query = appliedSearch.trim().toLowerCase();
+
+    return list.filter((user: UserRow) => {
+      if (appliedRole !== 'all' && user.user_role !== appliedRole) return false;
+      if (!query) return true;
+
+      const haystack = [
+        user.full_name,
+        user.email,
+        (user as any).user_id,
+        (user as any).id,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+
+      return haystack.some((value) => value.includes(query));
+    });
+  }, [data, appliedRole, appliedSearch]);
+
+  const handleApplyFilters = () => {
+    const trimmedSearch = searchInput.trim();
+
+    setAppliedSearch(trimmedSearch);
+    setAppliedRole(roleInput);
+    setPage(1);
+
+    const params = new URLSearchParams();
+    if (trimmedSearch) params.set('search', trimmedSearch);
+    if (roleInput !== 'all') params.set('role', roleInput);
+
+    const queryString = params.toString();
+    router.replace(queryString ? `/admin/users?${queryString}` : '/admin/users');
+  };
 
   const statusColors: Record<string, string> = {
     active: 'bg-green-100 text-green-800 dark:bg-green-900/20',
@@ -50,15 +116,21 @@ export default function UsersPage() {
     banned: 'bg-purple-100 text-purple-800 dark:bg-purple-900/20',
   };
 
-  const handleUserStatusChange = async (userId: string, status: SurveyUser['status']) => {
-    updateUserMutation.mutate({ userId, data: { status } }, {
-      onSuccess: () => {
-        toast.success(`User status updated to ${status}`);
-      },
-      onError: (error) => {
-        toast.error(error instanceof Error ? error.message : 'Unable to update user status');
-      },
-    });
+  const getUserId = (user: any) => user.user_id || user.id;
+  const getUserIdField = (user: any) => (user.user_id ? 'user_id' : 'id');
+
+  const handleUserStatusChange = async (user: SurveyUser, status: SurveyUser['status']) => {
+    updateUserMutation.mutate(
+      { userId: getUserId(user), matchField: getUserIdField(user), data: { status } },
+      {
+        onSuccess: () => {
+          toast.success(`User status updated to ${status}`);
+        },
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : 'Unable to update user status');
+        },
+      }
+    );
   };
 
   return (
@@ -80,22 +152,28 @@ export default function UsersPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by name or email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleApplyFilters();
+                  }
+                }}
                 className="pl-10"
               />
             </div>
             <div className="flex items-center gap-2">
               <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as any)}
+                value={roleInput}
+                onChange={(e) => setRoleInput(e.target.value as any)}
                 className="rounded-md border px-2 py-1 text-sm"
               >
                 <option value="all">All Roles</option>
                 <option value="creator">Creators</option>
                 <option value="filler">Fillers</option>
               </select>
-              <Button variant="outline">Filter</Button>
+              <Button variant="outline" onClick={handleApplyFilters}>Filter</Button>
             </div>
           </CardContent>
         </Card>
@@ -105,7 +183,7 @@ export default function UsersPage() {
           <CardHeader>
             <CardTitle>All Users</CardTitle>
             <CardDescription>
-              Total: {data?.total || 0} users
+              {isFiltering ? `Filtered: ${filteredUsers.length} users` : `Total: ${data?.total || 0} users`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -115,7 +193,11 @@ export default function UsersPage() {
                   <div className="h-8 w-8 rounded-full border-4 border-muted border-t-orange-500" />
                 </div>
               </div>
-            ) : data?.data?.length === 0 ? (
+            ) : error ? (
+              <div className="py-12 text-center text-red-600">
+                {error instanceof Error ? error.message : 'Unable to load users.'}
+              </div>
+            ) : filteredUsers.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground">No users available at the moment.</div>
             ) : (
               <>
@@ -123,18 +205,18 @@ export default function UsersPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
+                      <TableHead>Profession</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Wallet</TableHead>
                       <TableHead>Joined</TableHead>
-                      {roleFilter === 'creator' && <TableHead>Reports</TableHead>}
+                      {appliedRole === 'creator' && <TableHead>Reports</TableHead>}
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data?.data?.map((user) => (
-                      <TableRow key={user.id}>
+                    {filteredUsers.map((user: UserRow) => (
+                      <TableRow key={getUserId(user)}>
                         <TableCell className="font-medium">{user.full_name}</TableCell>
                         <TableCell className="text-sm">{user.email}</TableCell>
                         <TableCell>
@@ -149,7 +231,7 @@ export default function UsersPage() {
                         </TableCell>
                         <TableCell>{formatCurrency(user.wallet_balance, settings?.currency)}</TableCell>
                         <TableCell className="text-sm">{formatDate(user.created_at)}</TableCell>
-                        {roleFilter === 'creator' && (
+                        {appliedRole === 'creator' && (
                           <TableCell className="text-center">{user.total_reports}</TableCell>
                         )}
                         <TableCell className="text-right">
@@ -171,16 +253,16 @@ export default function UsersPage() {
                               </DropdownMenuItem>
                               {user.status === 'active' && (
                                 <>
-                                  <DropdownMenuItem className="text-red-600" onClick={() => handleUserStatusChange(user.id, 'blocked')}>
+                                  <DropdownMenuItem className="text-red-600" onClick={() => handleUserStatusChange(user, 'blocked')}>
                                     Block User
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem className="text-orange-600" onClick={() => handleUserStatusChange(user.id, 'suspended')}>
+                                  <DropdownMenuItem className="text-orange-600" onClick={() => handleUserStatusChange(user, 'suspended')}>
                                     Suspend User
                                   </DropdownMenuItem>
                                 </>
                               )}
                               {user.status !== 'active' && (
-                                <DropdownMenuItem className="text-green-600" onClick={() => handleUserStatusChange(user.id, 'active')}>
+                                <DropdownMenuItem className="text-green-600" onClick={() => handleUserStatusChange(user, 'active')}>
                                   Unblock User
                                 </DropdownMenuItem>
                               )}
@@ -193,7 +275,7 @@ export default function UsersPage() {
                 </Table>
 
                 {/* Pagination */}
-                {data && data.total_pages > 1 && (
+                {!isFiltering && data && data.total_pages > 1 && (
                   <div className="mt-4 flex justify-center">
                     <Pagination>
                       <PaginationContent>
