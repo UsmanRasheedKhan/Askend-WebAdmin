@@ -63,7 +63,7 @@ export default function UsersPage() {
   }, [searchParams]);
 
   const isFiltering = appliedSearch.trim().length > 0 || appliedRole !== 'all';
-  const limit = isFiltering ? PAGINATION_LIMITS.LARGE : PAGINATION_LIMITS.DEFAULT;
+  const limit = isFiltering ? Math.max(PAGINATION_LIMITS.LARGE, 200) : PAGINATION_LIMITS.DEFAULT;
 
   const { data, isLoading, error } = useUsers({ 
     page, 
@@ -117,11 +117,27 @@ export default function UsersPage() {
   };
 
   const getUserId = (user: any) => user.user_id || user.id;
-  const getUserIdField = (user: any) => (user.user_id ? 'user_id' : 'id');
+  const getUserIdField = (user: any) => {
+    if (user.user_id) return 'user_id';
+    if (typeof user.id === 'string' && /^[0-9a-f]{8}-/i.test(user.id)) return 'user_id';
+    return 'id';
+  };
 
   const handleUserStatusChange = async (user: SurveyUser, status: SurveyUser['status']) => {
+    const now = new Date();
+    const suspensionEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const updateData: Partial<SurveyUser> = {
+      status,
+    };
+
+    if (status === 'suspended') {
+      updateData.suspension_end_date = suspensionEnd.toISOString();
+    } else {
+      updateData.suspension_end_date = null;
+    }
+
     updateUserMutation.mutate(
-      { userId: getUserId(user), matchField: getUserIdField(user), data: { status } },
+      { userId: getUserId(user), matchField: getUserIdField(user), data: updateData },
       {
         onSuccess: () => {
           toast.success(`User status updated to ${status}`);
@@ -242,11 +258,8 @@ export default function UsersPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => toast(`Viewing profile for ${user.full_name}`)}>
+                              <DropdownMenuItem onClick={() => router.push(`/admin/users/${getUserId(user)}`)}>
                                 View Profile
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toast(`Send message to ${user.full_name}`)}>
-                                Send Message
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => toast(`Reviewing reports for ${user.full_name}`)}>
                                 View Reports

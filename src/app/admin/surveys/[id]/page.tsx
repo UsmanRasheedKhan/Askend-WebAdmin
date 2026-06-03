@@ -72,8 +72,8 @@ export default function SurveyDetailPage() {
     downed: 'bg-red-100 text-red-800',
   }
 
-  const responsesCount = Number((survey as any).responses_count) || 0
-  const targetResponsesNum = Number((survey as any).target_responses) || 0
+  const responsesCount = Number((survey as any).responses_colleted ?? (survey as any).responses_count) || 0
+  const targetResponsesNum = Number((survey as any).total_responses ?? (survey as any).target_responses) || 0
   const questionList = questions && questions.length > 0 ? questions : (survey as any).questions || []
 
   return (
@@ -102,7 +102,7 @@ export default function SurveyDetailPage() {
               <div className="text-sm text-muted-foreground">Responses</div>
               <div className="text-2xl font-bold mt-2">
                 {responsesCount}
-                <span className="text-lg text-muted-foreground ml-1">/ {survey.target_responses}</span>
+                <span className="text-lg text-muted-foreground ml-1">/ {targetResponsesNum}</span>
               </div>
               <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
@@ -196,10 +196,10 @@ export default function SurveyDetailPage() {
                       className="p-0 mt-1"
                       onClick={() => {
                         const creatorId = survey.creator_id || (survey as any).user_id;
-                        router.push(`/admin/users?search=${encodeURIComponent(String(creatorId || ''))}`);
+                        router.push(`/admin/users/${creatorId}`);
                       }}
                     >
-                      View Creator Profile →
+                      View Creator Profile {'->'}
                     </Button>
                   </div>
                   <div>

@@ -28,7 +28,7 @@ export interface SurveyUser {
   total_responses_filled: number;
   avatar_url?: string;
   status: 'active' | 'blocked' | 'suspended' | 'banned';
-  suspension_end_date?: string;
+  suspension_end_date?: string | null;
   total_reports: number;
   created_at: string;
   last_login?: string;

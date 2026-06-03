@@ -236,7 +236,11 @@ export function useSurveys(params?: PaginationParams & { search?: string }) {
         return {
           ...survey,
           creator_name: creatorMap.get(creatorId) || 'Unknown Creator',
-          responses_count: survey.responses_collected || survey.total_responses_collected || 0,
+          responses_count:
+            survey.responses_colleted ??
+            survey.responses_collected ??
+            survey.total_responses_collected ??
+            0,
         };
       });
 
@@ -291,7 +295,11 @@ export function useSurveyDetail(surveyId: string) {
       const result = { ...survey } as any;
       result.creator_name = creatorProfile?.full_name || 'Unknown Creator';
       result.creator_email = creatorProfile?.email || '';
-      result.responses_count = (survey as any).responses_collected || (survey as any).total_responses_collected || 0;
+      result.responses_count =
+        (survey as any).responses_colleted ??
+        (survey as any).responses_collected ??
+        (survey as any).total_responses_collected ??
+        0;
 
       // survey_questions is the column name for JSONB questions
       const questionsData = result.survey_questions || result.questions;
@@ -654,13 +662,26 @@ export function useUpdateUserMutation() {
         .update(data)
         .eq(filterField, userId)
         .select()
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error || !updated) {
+        const fallbackField = filterField === 'user_id' ? 'id' : 'user_id';
+        const fallback = await supabase
+          .from('user_profiles')
+          .update(data)
+          .eq(fallbackField, userId)
+          .select()
+          .maybeSingle();
+
+        if (fallback.error) throw fallback.error;
+        return fallback.data;
+      }
+
       return updated;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
     },
   });

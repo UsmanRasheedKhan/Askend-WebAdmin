@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -117,20 +118,24 @@ export default function SurveysPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data?.data?.map((survey) => (
+                    {data?.data?.map((survey) => {
+                      const responsesCollected = (survey as any).responses_colleted ?? (survey as any).responses_count ?? 0;
+                      const totalResponses = (survey as any).total_responses ?? survey.target_responses ?? 0;
+
+                      return (
                       <TableRow key={survey.id}>
                         <TableCell className="font-medium max-w-xs">
                           {truncate(survey.title, 40)}
                         </TableCell>
                         <TableCell className="text-sm">
                           {survey.creator_name && ((survey as any).user_id || (survey as any).creator_id) ? (
-                            <a
-                              href={`/admin/users?search=${encodeURIComponent(String((survey as any).user_id || (survey as any).creator_id || ''))}`}
+                            <Link
+                              href={`/admin/users/${(survey as any).user_id || (survey as any).creator_id}`}
                               className="text-blue-600 hover:text-blue-800 underline"
                               title={survey.creator_name}
                             >
                               {truncate(survey.creator_name, 30)}
-                            </a>
+                            </Link>
                           ) : (
                             truncate(survey.creator_name || 'Unknown', 30)
                           )}
@@ -141,11 +146,11 @@ export default function SurveysPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {(survey as any).responses_count ?? 0} / {survey.target_responses}
+                          {responsesCollected} / {totalResponses}
                         </TableCell>
                         <TableCell>{formatCurrency(getSurveyReward(survey), settings?.currency)}</TableCell>
                         <TableCell className="text-sm">
-                          {survey.published_at ? formatDate(survey.published_at) : '-'}
+                          {survey.created_at ? formatDate(survey.created_at) : '-'}
                         </TableCell>
                         <TableCell className="text-center">{survey.total_reports}</TableCell>
                         <TableCell className="text-right">
@@ -209,7 +214,7 @@ export default function SurveysPage() {
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
 
